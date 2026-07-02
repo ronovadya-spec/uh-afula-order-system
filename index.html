@@ -1,1 +1,299 @@
+<!DOCTYPE html>
+<html lang="he">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>מערכת הזמנת ציוד - סניף עפולה</title>
 
+<style>
+html,body{touch-action:manipulation;overscroll-behavior:none}
+body{font-family:Arial;direction:rtl;text-align:center;background:#f5f5f5;padding:12px}
+.box{background:white;max-width:500px;margin:auto;padding:16px;border-radius:14px;box-shadow:0 0 10px #ddd}
+button,input{padding:10px;margin:6px;width:85%;font-size:14px}
+button{background:#ff8c00;color:white;border:0;border-radius:9px}
+button:disabled{background:#ccc}
+h1{font-size:22px;margin:6px;color:#ff8c00}
+h2{font-size:17px;margin:4px;color:#444}
+h3{font-size:18px;margin:10px}
+.divider{height:1px;background:#ddd;margin:14px}
+.menu-btn{display:block;margin:8px auto}
+.orders-btn{background:#444}
+.category{margin-top:16px;font-weight:bold;color:#ff8c00;font-size:20px}
+.item{position:relative;background:#f8f8f8;margin:8px;padding:8px 14px;border-radius:12px;border:2px solid transparent}
+.item.selected{border-color:#ff8c00;background:#fff7ee}
+.item b{font-size:18px;display:block;margin-bottom:4px}
+.info{position:absolute;left:10px;top:8px;width:23px;height:23px;border-radius:50%;padding:0;margin:0;font-weight:bold;font-size:13px}
+.qty button{width:38px;height:38px;padding:0;margin:4px 8px;font-size:18px}
+.qty span{font-size:22px;font-weight:bold;margin:0 12px}
+.summary{font-weight:bold;color:#ff8c00;margin:10px;font-size:16px}
+.submit{margin-top:14px;font-weight:bold}
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);align-items:center;justify-content:center;z-index:999}
+.modal-box{background:white;width:85%;max-width:340px;border-radius:16px;padding:18px}
+.order-card{background:#f8f8f8;margin:10px;padding:10px;border-radius:10px;text-align:right}
+.order-line{background:white;margin:6px;padding:7px;border-radius:8px}
+</style>
+</head>
+
+<body>
+
+<div class="box">
+  <h1>🚑 מערכת הזמנת ציוד</h1>
+  <h2>סניף עפולה</h2>
+
+  <div id="loginBox">
+    <input id="codeInput" placeholder="הכנס קוד כונן">
+    <button onclick="login()">כניסה</button>
+    <p id="msg"></p>
+  </div>
+
+  <div id="app" style="display:none">
+    <h3 id="hello"></h3>
+
+    <button class="menu-btn" onclick="loadBLS()">🚑 כונן BLS</button>
+    <button class="menu-btn" disabled>🎒 משתלם</button>
+    <button class="menu-btn" disabled>❤️ תן כבוד</button>
+
+    <div class="divider"></div>
+
+    <button class="menu-btn orders-btn" onclick="loadMyOrders()">📦 ההזמנות שלי</button>
+
+    <div id="content"></div>
+  </div>
+</div>
+
+<div id="infoModal" class="modal">
+  <div class="modal-box">
+    <h3 id="infoTitle"></h3>
+    <p id="infoText"></p>
+    <button onclick="closeInfo()">סגור</button>
+  </div>
+</div>
+
+<div id="confirmModal" class="modal">
+  <div class="modal-box">
+    <h3>אישור הזמנה</h3>
+    <div id="confirmContent"></div>
+    <button onclick="sendOrder()">שלח הזמנה</button>
+    <button onclick="closeConfirm()">חזור</button>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getFirestore, collection, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+const app = initializeApp({
+  apiKey:"AIzaSyDplJPY5X9D7PeorWsMwJswqF5Q9vq730",
+  authDomain:"afula-equipment.firebaseapp.com",
+  projectId:"afula-equipment"
+});
+
+const db = getFirestore(app);
+let currentUser = null;
+let blsItems = [];
+
+window.login = async function(){
+  const code = document.getElementById("codeInput").value.trim();
+  const snap = await getDocs(collection(db,"volunteers"));
+
+  let found = null;
+  snap.forEach(doc=>{
+    const d = doc.data();
+    if(String(d.code || d.Code).trim() === code){
+      found = { code:String(d.code || d.Code).trim(), name:d.name || d.Name };
+    }
+  });
+
+  if(!found){
+    document.getElementById("msg").innerText = "כונן לא נמצא";
+    return;
+  }
+
+  currentUser = found;
+  document.getElementById("loginBox").style.display = "none";
+  document.getElementById("app").style.display = "block";
+  document.getElementById("hello").innerText = "שלום, " + found.name + " 👋";
+};
+
+window.loadBLS = async function(){
+  document.getElementById("content").innerHTML = "טוען...";
+
+  const menusSnap = await getDocs(collection(db,"menus"));
+  let blsId = null;
+
+  menusSnap.forEach(doc=>{
+    if(doc.data().title === "BLS") blsId = doc.id;
+  });
+
+  if(!blsId){
+    document.getElementById("content").innerHTML = "לא נמצא מסמך BLS";
+    return;
+  }
+
+  const itemsSnap = await getDocs(collection(db,"menus",blsId,"items"));
+
+  blsItems = [];
+  itemsSnap.forEach(doc=>{
+    const d = doc.data();
+    blsItems.push({
+      name: d.name,
+      max: Number(d.max || 0),
+      category: d.category || "ללא קטגוריה",
+      order: Number(d.order || 999),
+      step: Number(d.step || 1),
+      qty: 0
+    });
+  });
+
+  blsItems.sort((a,b)=>a.order-b.order);
+  renderBLS();
+};
+
+function selectedItems(){
+  return blsItems.filter(i => i.qty > 0);
+}
+
+function renderBLS(){
+  let html = "<h3>🚑 כונן BLS</h3>";
+  html += `<div class="summary">${selectedItems().length} פריטים נבחרו</div>`;
+
+  let currentCategory = "";
+
+  blsItems.forEach((item,index)=>{
+    if(item.category !== currentCategory){
+      currentCategory = item.category;
+      html += `<div class="category">${currentCategory}</div>`;
+    }
+
+    html += `
+      <div class="item ${item.qty > 0 ? "selected" : ""}">
+        <button class="info" onclick="showInfo(${index})">i</button>
+        <b>${item.name}</b>
+        <div class="qty">
+          <button onclick="changeQty(${index}, -1)" ${item.qty <= 0 ? "disabled" : ""}>➖</button>
+          <span>${item.qty}</span>
+          <button onclick="changeQty(${index}, 1)" ${item.qty >= item.max ? "disabled" : ""}>➕</button>
+        </div>
+      </div>
+    `;
+  });
+
+  html += `
+    <button class="submit" ${selectedItems().length === 0 ? "disabled" : ""} onclick="openConfirm()">
+      📦 שלח הזמנה (${selectedItems().length})
+    </button>
+  `;
+
+  document.getElementById("content").innerHTML = html;
+}
+
+window.changeQty = function(index, direction){
+  const item = blsItems[index];
+  const next = item.qty + (item.step * direction);
+
+  if(next < 0) item.qty = 0;
+  else if(next > item.max) item.qty = item.max;
+  else item.qty = next;
+
+  renderBLS();
+};
+
+window.showInfo = function(index){
+  const item = blsItems[index];
+  document.getElementById("infoTitle").innerText = item.name;
+  document.getElementById("infoText").innerText = "תקן: " + item.max;
+  document.getElementById("infoModal").style.display = "flex";
+};
+
+window.closeInfo = function(){
+  document.getElementById("infoModal").style.display = "none";
+};
+
+window.openConfirm = function(){
+  let html = `<p><b>🚑 כונן BLS</b></p>`;
+  selectedItems().forEach(i=>{
+    html += `<div class="order-line">${i.name} - ${i.qty}</div>`;
+  });
+
+  document.getElementById("confirmContent").innerHTML = html;
+  document.getElementById("confirmModal").style.display = "flex";
+};
+
+window.closeConfirm = function(){
+  document.getElementById("confirmModal").style.display = "none";
+};
+
+window.sendOrder = async function(){
+  const items = selectedItems().map(i=>({
+    name:i.name,
+    quantity:i.qty,
+    max:i.max,
+    category:i.category
+  }));
+
+  await addDoc(collection(db,"orders"), {
+    volunteerName: currentUser.name,
+    volunteerCode: currentUser.code,
+    type: "BLS",
+    items: items,
+    status: "pending",
+    createdAt: new Date()
+  });
+
+  blsItems.forEach(i=>i.qty = 0);
+  closeConfirm();
+  renderBLS();
+
+  alert("ההזמנה נשלחה בהצלחה 🚑");
+};
+
+function statusText(status){
+  if(status === "pending") return "🟡 ממתין";
+  if(status === "in_progress") return "🔵 בטיפול";
+  if(status === "completed") return "🟢 הושלם";
+  if(status === "partial") return "🟠 נופק חלקית";
+  return status || "ממתין";
+}
+
+window.loadMyOrders = async function(){
+  document.getElementById("content").innerHTML = "טוען הזמנות...";
+
+  const snap = await getDocs(collection(db,"orders"));
+  let orders = [];
+
+  snap.forEach(doc=>{
+    const d = doc.data();
+    if(String(d.volunteerCode) === String(currentUser.code)){
+      orders.push(d);
+    }
+  });
+
+  orders.reverse();
+
+  if(orders.length === 0){
+    document.getElementById("content").innerHTML = "<h3>📦 ההזמנות שלי</h3><p>אין הזמנות עדיין</p>";
+    return;
+  }
+
+  let html = "<h3>📦 ההזמנות שלי</h3>";
+
+  orders.forEach(order=>{
+    html += `
+      <div class="order-card">
+        <b>${order.type || "הזמנה"}</b><br>
+        סטטוס: ${statusText(order.status)}<br><br>
+    `;
+
+    (order.items || []).forEach(item=>{
+      html += `<div class="order-line">${item.name} - ${item.quantity}</div>`;
+    });
+
+    html += `</div>`;
+  });
+
+  document.getElementById("content").innerHTML = html;
+};
+</script>
+
+</body>
+</html>
