@@ -29,7 +29,9 @@ h3{font-size:18px;margin:10px}
 .submit{margin-top:14px;font-weight:bold}
 .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);align-items:center;justify-content:center;z-index:999}
 .modal-box{background:white;width:85%;max-width:340px;border-radius:16px;padding:18px}
-.order-card{background:#f8f8f8;margin:10px;padding:10px;border-radius:10px;text-align:right}
+.order-card{background:#f8f8f8;margin:10px;padding:12px;border-radius:12px;text-align:right}
+.order-title{font-size:18px;font-weight:bold;color:#ff8c00}
+.order-meta{font-size:14px;color:#555;margin:5px 0}
 .order-line{background:white;margin:6px;padding:7px;border-radius:8px}
 </style>
 </head>
@@ -91,6 +93,31 @@ const app = initializeApp({
 const db = getFirestore(app);
 let currentUser = null;
 let blsItems = [];
+
+function pad(n){ return String(n).padStart(2,"0"); }
+
+function formatDateTime(date){
+  return `${pad(date.getDate())}/${pad(date.getMonth()+1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function makeOrderNumber(){
+  return String(Date.now()).slice(-6);
+}
+
+function statusText(status){
+  if(status === "pending") return "🟡 ממתין";
+  if(status === "in_progress") return "🔵 בטיפול";
+  if(status === "completed") return "🟢 הושלם";
+  if(status === "partial") return "🟠 נופק חלקית";
+  return status || "ממתין";
+}
+
+function orderDateText(order){
+  if(order.createdAtText) return order.createdAtText;
+  if(order.createdAt && order.createdAt.toDate) return formatDateTime(order.createdAt.toDate());
+  if(order.createdAtMillis) return formatDateTime(new Date(order.createdAtMillis));
+  return "ללא תאריך";
+}
 
 window.login = async function(){
   const code = document.getElementById("codeInput").value.trim();
@@ -224,6 +251,9 @@ window.closeConfirm = function(){
 };
 
 window.sendOrder = async function(){
+  const now = new Date();
+  const orderNumber = makeOrderNumber();
+
   const items = selectedItems().map(i=>({
     name:i.name,
     quantity:i.qty,
@@ -232,28 +262,22 @@ window.sendOrder = async function(){
   }));
 
   await addDoc(collection(db,"orders"), {
+    orderNumber: orderNumber,
+    createdAtText: formatDateTime(now),
+    createdAtMillis: now.getTime(),
     volunteerName: currentUser.name,
     volunteerCode: currentUser.code,
     type: "BLS",
     items: items,
-    status: "pending",
-    createdAt: new Date()
+    status: "pending"
   });
 
   blsItems.forEach(i=>i.qty = 0);
   closeConfirm();
   renderBLS();
 
-  alert("ההזמנה נשלחה בהצלחה 🚑");
+  alert("הזמנה #" + orderNumber + " נשלחה בהצלחה 🚑");
 };
-
-function statusText(status){
-  if(status === "pending") return "🟡 ממתין";
-  if(status === "in_progress") return "🔵 בטיפול";
-  if(status === "completed") return "🟢 הושלם";
-  if(status === "partial") return "🟠 נופק חלקית";
-  return status || "ממתין";
-}
 
 window.loadMyOrders = async function(){
   document.getElementById("content").innerHTML = "טוען הזמנות...";
@@ -268,7 +292,7 @@ window.loadMyOrders = async function(){
     }
   });
 
-  orders.reverse();
+  orders.sort((a,b)=>(b.createdAtMillis || 0) - (a.createdAtMillis || 0));
 
   if(orders.length === 0){
     document.getElementById("content").innerHTML = "<h3>📦 ההזמנות שלי</h3><p>אין הזמנות עדיין</p>";
@@ -280,8 +304,10 @@ window.loadMyOrders = async function(){
   orders.forEach(order=>{
     html += `
       <div class="order-card">
-        <b>${order.type || "הזמנה"}</b><br>
-        סטטוס: ${statusText(order.status)}<br><br>
+        <div class="order-title">📦 הזמנה #${order.orderNumber || "ללא מספר"}</div>
+        <div class="order-meta">🗓️ ${orderDateText(order)}</div>
+        <div><b>${order.type || "הזמנה"}</b></div>
+        <div>סטטוס: ${statusText(order.status)}</div><br>
     `;
 
     (order.items || []).forEach(item=>{
