@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>מערכת הזמנת ציוד - סניף עפולה</title>
-
 <style>
 html,body{touch-action:manipulation;overscroll-behavior:none}
 body{font-family:Arial;direction:rtl;text-align:center;background:#f5f5f5;padding:12px}
@@ -33,6 +32,7 @@ h3{font-size:18px;margin:10px}
 .order-title{font-size:18px;font-weight:bold;color:#ff8c00}
 .order-meta{font-size:14px;color:#555;margin:5px 0}
 .order-line{background:white;margin:6px;padding:7px;border-radius:8px}
+.empty{background:#f8f8f8;padding:14px;border-radius:12px;margin:12px}
 </style>
 </head>
 
@@ -50,15 +50,9 @@ h3{font-size:18px;margin:10px}
 
   <div id="app" style="display:none">
     <h3 id="hello"></h3>
-
-    <button class="menu-btn" onclick="loadBLS()">🚑 כונן BLS</button>
-    <button class="menu-btn" disabled>🎒 משתלם</button>
-    <button class="menu-btn" disabled>❤️ תן כבוד</button>
-
+    <div id="menusBox"></div>
     <div class="divider"></div>
-
     <button class="menu-btn orders-btn" onclick="loadMyOrders()">📦 ההזמנות שלי</button>
-
     <div id="content"></div>
   </div>
 </div>
@@ -91,8 +85,11 @@ const app = initializeApp({
 });
 
 const db = getFirestore(app);
+
 let currentUser = null;
-let blsItems = [];
+let menus = [];
+let currentMenu = null;
+let currentItems = [];
 
 function pad(n){ return String(n).padStart(2,"0"); }
 
@@ -114,9 +111,22 @@ function statusText(status){
 
 function orderDateText(order){
   if(order.createdAtText) return order.createdAtText;
-  if(order.createdAt && order.createdAt.toDate) return formatDateTime(order.createdAt.toDate());
   if(order.createdAtMillis) return formatDateTime(new Date(order.createdAtMillis));
   return "ללא תאריך";
+}
+
+function menuEmoji(title){
+  if(title === "BLS") return "🚑";
+  if(title === "משתלם") return "🎒";
+  if(title === "תן כבוד") return "❤️";
+  return "📦";
+}
+
+function menuOrder(title){
+  if(title === "BLS") return 1;
+  if(title === "משתלם") return 2;
+  if(title === "תן כבוד") return 3;
+  return 99;
 }
 
 window.login = async function(){
@@ -140,29 +150,47 @@ window.login = async function(){
   document.getElementById("loginBox").style.display = "none";
   document.getElementById("app").style.display = "block";
   document.getElementById("hello").innerText = "שלום, " + found.name + " 👋";
+
+  await loadMenus();
 };
 
-window.loadBLS = async function(){
-  document.getElementById("content").innerHTML = "טוען...";
+async function loadMenus(){
+  const snap = await getDocs(collection(db,"menus"));
+  menus = [];
 
-  const menusSnap = await getDocs(collection(db,"menus"));
-  let blsId = null;
+  snap.forEach(doc=>{
+    const d = doc.data();
+    const title = d.title || doc.id;
 
-  menusSnap.forEach(doc=>{
-    if(doc.data().title === "BLS") blsId = doc.id;
+    menus.push({
+      id: doc.id,
+      title: title,
+      emoji: d.emoji || menuEmoji(title),
+      order: Number(d.order || menuOrder(title))
+    });
   });
 
-  if(!blsId){
-    document.getElementById("content").innerHTML = "לא נמצא מסמך BLS";
-    return;
-  }
+  menus.sort((a,b)=>a.order-b.order);
 
-  const itemsSnap = await getDocs(collection(db,"menus",blsId,"items"));
+  let html = "";
+  menus.forEach(menu=>{
+    html += `<button class="menu-btn" onclick="loadMenu('${menu.id}')">${menu.emoji} ${menu.title}</button>`;
+  });
 
-  blsItems = [];
+  document.getElementById("menusBox").innerHTML = html;
+}
+
+window.loadMenu = async function(menuId){
+  currentMenu = menus.find(m => m.id === menuId);
+  currentItems = [];
+
+  document.getElementById("content").innerHTML = "טוען...";
+
+  const itemsSnap = await getDocs(collection(db,"menus",menuId,"items"));
+
   itemsSnap.forEach(doc=>{
     const d = doc.data();
-    blsItems.push({
+    currentItems.push({
       name: d.name,
       max: Number(d.max || 0),
       category: d.category || "ללא קטגוריה",
@@ -172,21 +200,33 @@ window.loadBLS = async function(){
     });
   });
 
-  blsItems.sort((a,b)=>a.order-b.order);
-  renderBLS();
+  currentItems.sort((a,b)=>a.order-b.order);
+  renderMenu();
 };
 
 function selectedItems(){
-  return blsItems.filter(i => i.qty > 0);
+  return currentItems.filter(i => i.qty > 0);
 }
 
-function renderBLS(){
-  let html = "<h3>🚑 כונן BLS</h3>";
+function renderMenu(){
+  if(!currentMenu){
+    document.getElementById("content").innerHTML = "";
+    return;
+  }
+
+  let html = `<h3>${currentMenu.emoji} ${currentMenu.title}</h3>`;
+
+  if(currentItems.length === 0){
+    html += `<div class="empty">אין עדיין פריטים בלשונית הזו</div>`;
+    document.getElementById("content").innerHTML = html;
+    return;
+  }
+
   html += `<div class="summary">${selectedItems().length} פריטים נבחרו</div>`;
 
   let currentCategory = "";
 
-  blsItems.forEach((item,index)=>{
+  currentItems.forEach((item,index)=>{
     if(item.category !== currentCategory){
       currentCategory = item.category;
       html += `<div class="category">${currentCategory}</div>`;
@@ -215,18 +255,18 @@ function renderBLS(){
 }
 
 window.changeQty = function(index, direction){
-  const item = blsItems[index];
+  const item = currentItems[index];
   const next = item.qty + (item.step * direction);
 
   if(next < 0) item.qty = 0;
   else if(next > item.max) item.qty = item.max;
   else item.qty = next;
 
-  renderBLS();
+  renderMenu();
 };
 
 window.showInfo = function(index){
-  const item = blsItems[index];
+  const item = currentItems[index];
   document.getElementById("infoTitle").innerText = item.name;
   document.getElementById("infoText").innerText = "תקן: " + item.max;
   document.getElementById("infoModal").style.display = "flex";
@@ -237,7 +277,7 @@ window.closeInfo = function(){
 };
 
 window.openConfirm = function(){
-  let html = `<p><b>🚑 כונן BLS</b></p>`;
+  let html = `<p><b>${currentMenu.emoji} ${currentMenu.title}</b></p>`;
   selectedItems().forEach(i=>{
     html += `<div class="order-line">${i.name} - ${i.qty}</div>`;
   });
@@ -267,14 +307,15 @@ window.sendOrder = async function(){
     createdAtMillis: now.getTime(),
     volunteerName: currentUser.name,
     volunteerCode: currentUser.code,
-    type: "BLS",
+    type: currentMenu.title,
+    menuId: currentMenu.id,
     items: items,
     status: "pending"
   });
 
-  blsItems.forEach(i=>i.qty = 0);
+  currentItems.forEach(i=>i.qty = 0);
   closeConfirm();
-  renderBLS();
+  renderMenu();
 
   alert("הזמנה #" + orderNumber + " נשלחה בהצלחה 🚑");
 };
