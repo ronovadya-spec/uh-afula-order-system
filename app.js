@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, getDocs, addDoc, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, collection, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const app = initializeApp({
   apiKey:"AIzaSyDplJPY5X9D7PeorWsMwJswqF5Q9vq730",
@@ -8,9 +8,6 @@ const app = initializeApp({
 });
 
 const db = getFirestore(app);
-
-window.db = db;
-window.firebaseFns = { collection, getDocs, addDoc, doc, getDoc, updateDoc };
 
 let currentUser = null;
 let menus = [];
@@ -30,8 +27,7 @@ function makeOrderNumber(){
 function statusText(status){
   if(status === "pending") return "🟡 ממתין";
   if(status === "in_progress") return "🔵 בטיפול";
-  if(status === "ready") return "🟢 מוכן לאיסוף";
-  if(status === "completed") return "✅ נמסר";
+  if(status === "completed") return "🟢 הושלם";
   if(status === "partial") return "🟠 נופק חלקית";
   return status || "ממתין";
 }
@@ -56,57 +52,26 @@ function menuOrder(title){
   return 99;
 }
 
-window.statusText = statusText;
-window.orderDateText = orderDateText;
-
 window.login = async function(){
   const code = document.getElementById("codeInput").value.trim();
-  document.getElementById("msg").innerText = "";
-
-  const adminSnap = await getDoc(doc(db,"admins",code));
-
-  if(adminSnap.exists()){
-    const admin = adminSnap.data();
-
-    if(admin.active !== false){
-      window.currentAdmin = { code, ...admin };
-
-      document.getElementById("loginBox").style.display = "none";
-      document.getElementById("volunteerApp").style.display = "none";
-      document.getElementById("managerApp").style.display = "block";
-
-      if(window.managerLoadDashboard){
-        window.managerLoadDashboard();
-      }
-
-      return;
-    }
-  }
-
   const snap = await getDocs(collection(db,"volunteers"));
-  let found = null;
 
-  snap.forEach(docSnap=>{
-    const d = docSnap.data();
+  let found = null;
+  snap.forEach(doc=>{
+    const d = doc.data();
     if(String(d.code || d.Code).trim() === code){
-      found = {
-        code:String(d.code || d.Code).trim(),
-        name:d.name || d.Name
-      };
+      found = { code:String(d.code || d.Code).trim(), name:d.name || d.Name };
     }
   });
 
   if(!found){
-    document.getElementById("msg").innerText = "קוד לא נמצא";
+    document.getElementById("msg").innerText = "כונן לא נמצא";
     return;
   }
 
   currentUser = found;
-  window.currentUser = found;
-
   document.getElementById("loginBox").style.display = "none";
-  document.getElementById("managerApp").style.display = "none";
-  document.getElementById("volunteerApp").style.display = "block";
+  document.getElementById("app").style.display = "block";
   document.getElementById("hello").innerText = "שלום, " + found.name + " 👋";
 
   await loadMenus();
@@ -116,13 +81,13 @@ async function loadMenus(){
   const snap = await getDocs(collection(db,"menus"));
   menus = [];
 
-  snap.forEach(docSnap=>{
-    const d = docSnap.data();
-    const title = d.title || docSnap.id;
+  snap.forEach(doc=>{
+    const d = doc.data();
+    const title = d.title || doc.id;
 
     menus.push({
-      id: docSnap.id,
-      title,
+      id: doc.id,
+      title: title,
       emoji: d.emoji || menuEmoji(title),
       order: Number(d.order || menuOrder(title))
     });
@@ -146,9 +111,8 @@ window.loadMenu = async function(menuId){
 
   const itemsSnap = await getDocs(collection(db,"menus",menuId,"items"));
 
-  itemsSnap.forEach(docSnap=>{
-    const d = docSnap.data();
-
+  itemsSnap.forEach(doc=>{
+    const d = doc.data();
     currentItems.push({
       name: d.name,
       max: Number(d.max || 0),
@@ -237,7 +201,6 @@ window.closeInfo = function(){
 
 window.openConfirm = function(){
   let html = `<p><b>${currentMenu.emoji} ${currentMenu.title}</b></p>`;
-
   selectedItems().forEach(i=>{
     html += `<div class="order-line">${i.name} - ${i.qty}</div>`;
   });
@@ -257,22 +220,20 @@ window.sendOrder = async function(){
   const items = selectedItems().map(i=>({
     name:i.name,
     quantity:i.qty,
-    supplied:null,
     max:i.max,
     category:i.category
   }));
 
   await addDoc(collection(db,"orders"), {
-    orderNumber,
+    orderNumber: orderNumber,
     createdAtText: formatDateTime(now),
     createdAtMillis: now.getTime(),
     volunteerName: currentUser.name,
     volunteerCode: currentUser.code,
     type: currentMenu.title,
     menuId: currentMenu.id,
-    items,
-    status: "pending",
-    managerNote: ""
+    items: items,
+    status: "pending"
   });
 
   currentItems.forEach(i=>i.qty = 0);
@@ -288,8 +249,8 @@ window.loadMyOrders = async function(){
   const snap = await getDocs(collection(db,"orders"));
   let orders = [];
 
-  snap.forEach(docSnap=>{
-    const d = docSnap.data();
+  snap.forEach(doc=>{
+    const d = doc.data();
     if(String(d.volunteerCode) === String(currentUser.code)){
       orders.push(d);
     }
@@ -310,27 +271,11 @@ window.loadMyOrders = async function(){
         <div class="order-title">📦 הזמנה #${order.orderNumber || "ללא מספר"}</div>
         <div class="order-meta">🗓️ ${orderDateText(order)}</div>
         <div><b>${order.type || "הזמנה"}</b></div>
-        <div>סטטוס: ${statusText(order.status)}</div>
+        <div>סטטוס: ${statusText(order.status)}</div><br>
     `;
 
-    if(order.managerNote){
-      html += `<div class="order-line">💬 הערת מחסן: ${order.managerNote}</div>`;
-    }
-
     (order.items || []).forEach(item=>{
-      const supplied = item.supplied;
-
-      if(supplied === null || supplied === undefined){
-        html += `<div class="order-line">${item.name} - ביקשת: ${item.quantity}</div>`;
-      } else {
-        html += `
-          <div class="order-line">
-            <b>${item.name}</b><br>
-            ביקשת: ${item.quantity}<br>
-            קיבלת: ${supplied}
-          </div>
-        `;
-      }
+      html += `<div class="order-line">${item.name} - ${item.quantity}</div>`;
     });
 
     html += `</div>`;
