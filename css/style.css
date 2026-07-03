@@ -1,0 +1,28 @@
+html,body{touch-action:manipulation;overscroll-behavior:none}
+body{font-family:Arial;direction:rtl;text-align:center;background:#f5f5f5;padding:12px}
+.box{background:white;max-width:500px;margin:auto;padding:16px;border-radius:14px;box-shadow:0 0 10px #ddd}
+button,input{padding:10px;margin:6px;width:85%;font-size:14px}
+button{background:#ff8c00;color:white;border:0;border-radius:9px}
+button:disabled{background:#ccc}
+h1{font-size:22px;margin:6px;color:#ff8c00}
+h2{font-size:17px;margin:4px;color:#444}
+h3{font-size:18px;margin:10px}
+.divider{height:1px;background:#ddd;margin:14px}
+.menu-btn{display:block;margin:8px auto}
+.orders-btn{background:#444}
+.category{margin-top:16px;font-weight:bold;color:#ff8c00;font-size:20px}
+.item{position:relative;background:#f8f8f8;margin:8px;padding:8px 14px;border-radius:12px;border:2px solid transparent}
+.item.selected{border-color:#ff8c00;background:#fff7ee}
+.item b{font-size:18px;display:block;margin-bottom:4px}
+.info{position:absolute;left:10px;top:8px;width:23px;height:23px;border-radius:50%;padding:0;margin:0;font-weight:bold;font-size:13px}
+.qty button{width:38px;height:38px;padding:0;margin:4px 8px;font-size:18px}
+.qty span{font-size:22px;font-weight:bold;margin:0 12px}
+.summary{font-weight:bold;color:#ff8c00;margin:10px;font-size:16px}
+.submit{margin-top:14px;font-weight:bold}
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);align-items:center;justify-content:center;z-index:999}
+.modal-box{background:white;width:85%;max-width:340px;border-radius:16px;padding:18px}
+.order-card{background:#f8f8f8;margin:10px;padding:12px;border-radius:12px;text-align:right}
+.order-title{font-size:18px;font-weight:bold;color:#ff8c00}
+.order-meta{font-size:14px;color:#555;margin:5px 0}
+.order-line{background:white;margin:6px;padding:7px;border-radius:8px}
+.empty{background:#f8f8f8;padding:14px;border-radius:12px;margin:12px}
