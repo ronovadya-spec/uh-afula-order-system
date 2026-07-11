@@ -17,7 +17,9 @@ let menus = [];
 let currentMenu = null;
 let currentItems = [];
 
-function pad(n){ return String(n).padStart(2,"0"); }
+function pad(n){
+  return String(n).padStart(2,"0");
+}
 
 function formatDateTime(date){
   return `${pad(date.getDate())}/${pad(date.getMonth()+1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -27,7 +29,7 @@ function makeOrderNumber(){
   return String(Date.now()).slice(-6);
 }
 
-function statusText(status){
+function statusText
   if(status === "pending") return "🟡 ממתין";
   if(status === "in_progress") return "🔵 בטיפול";
   if(status === "ready") return "🟢 מוכן לאיסוף";
@@ -110,6 +112,7 @@ window.login = async function(){
   document.getElementById("hello").innerText = "שלום, " + found.name + " 👋";
 
   await loadMenus();
+  showVolunteerHome();
 };
 
 async function loadMenus(){
